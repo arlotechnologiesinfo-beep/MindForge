@@ -3,27 +3,32 @@ package com.mindforge101.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import android.graphics.Color as AndroidColor
+import com.mindforge101.app.ui.MfBottomBar
+import com.mindforge101.app.ui.NavIcon
+import com.mindforge101.app.ui.NavTab
+import com.mindforge101.app.ui.MfMotion
+import com.mindforge101.app.ui.SplashOverlay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -45,25 +50,28 @@ import com.mindforge101.app.ui.ProfileScreen
 import com.mindforge101.app.ui.ProgressScreen
 import com.mindforge101.app.ui.ResultScreen
 
-private data class Tab(val route: String, val label: String, val icon: ImageVector)
-
 private val tabs = listOf(
-    Tab("home", "Home", Icons.Filled.Home),
-    Tab("games", "Games", Icons.AutoMirrored.Filled.List),
-    Tab("progress", "Progress", Icons.Filled.Star),
-    Tab("profile", "Profile", Icons.Filled.Person),
+    NavTab("home", "Home", NavIcon.Home),
+    NavTab("games", "Games", NavIcon.Games),
+    NavTab("progress", "Progress", NavIcon.Progress),
+    NavTab("profile", "Profile", NavIcon.Profile),
 )
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),
+        )
         setContent {
             val vm: AppViewModel = viewModel()
             val settings by vm.settings.collectAsStateWithLifecycle()
-            MindForgeTheme(largeText = settings.largeText) {
+            MindForgeTheme(largeText = settings.largeText, reduceMotion = settings.reduceMotion) {
+                var showSplash by rememberSaveable { mutableStateOf(true) }
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                     App(vm)
+                    if (showSplash) SplashOverlay(settings.reduceMotion) { showSplash = false }
                 }
             }
         }
@@ -88,20 +96,11 @@ private fun App(vm: AppViewModel) {
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             if (tabs.any { it.route == route }) {
-                NavigationBar {
-                    tabs.forEach { tab ->
-                        NavigationBarItem(
-                            selected = route == tab.route,
-                            onClick = {
-                                nav.navigate(tab.route) {
-                                    popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = { Icon(tab.icon, contentDescription = null) },
-                            label = { Text(tab.label) },
-                        )
+                MfBottomBar(tabs, route) { tab ->
+                    nav.navigate(tab.route) {
+                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
                     }
                 }
             }
@@ -112,8 +111,12 @@ private fun App(vm: AppViewModel) {
             navController = nav,
             startDestination = "home",
             modifier = if (isTab) Modifier.padding(padding) else Modifier,
+            enterTransition = { fadeIn(tween(MfMotion.Medium)) + if (settings.reduceMotion) androidx.compose.animation.EnterTransition.None else slideInHorizontally(tween(MfMotion.Medium)) { it / 24 } },
+            exitTransition = { fadeOut(tween(MfMotion.Short)) },
+            popEnterTransition = { fadeIn(tween(MfMotion.Medium)) },
+            popExitTransition = { fadeOut(tween(MfMotion.Short)) + if (settings.reduceMotion) androidx.compose.animation.ExitTransition.None else slideOutHorizontally(tween(MfMotion.Short)) { it / 24 } },
         ) {
-            composable("home") { HomeScreen(profile, sessions) { nav.openPlay(it) } }
+            composable("home") { HomeScreen(profile, sessions, achievements.size) { nav.openPlay(it) } }
             composable("games") { GamesScreen(progress) { nav.openPlay(it) } }
             composable("progress") { ProgressScreen(profile, sessions, achievements) }
             composable("profile") { ProfileScreen(profiles, profile, settings, vm) }
@@ -137,6 +140,7 @@ private fun App(vm: AppViewModel) {
                             }
                         },
                         onExit = { nav.popBackStack() },
+                        bestScore = progress[game.id]?.bestScore?.takeIf { it > 0 },
                     )
                 }
             }

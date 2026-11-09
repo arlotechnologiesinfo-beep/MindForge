@@ -2,37 +2,36 @@ package com.mindforge101.app.ui
 
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -66,6 +65,9 @@ import kotlin.math.ceil
 
 private const val FEEDBACK_MS = 700L
 
+/** The round on screen, tied to its key so a fading-out round can never answer for the next one. */
+private data class RoundState(val key: Int, val round: Round)
+
 @Composable
 fun PlayScreen(
     game: GameDef,
@@ -74,41 +76,46 @@ fun PlayScreen(
     haptics: Boolean,
     onFinished: (SessionResult) -> Unit,
     onExit: () -> Unit,
+    bestScore: Int? = null,
 ) {
     var started by remember { mutableStateOf(false) }
     BackHandler(onBack = onExit)
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .safeDrawingPadding()
-            .padding(horizontal = 16.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onExit) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Leave game")
-            }
-            Text(game.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            Text("Level $level", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        }
-        if (started) {
-            SessionRunner(game, level, reduceMotion, haptics, onFinished)
-        } else {
-            Column(
-                Modifier.weight(1f).fillMaxWidth(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(game.category.label.uppercase(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
-                Spacer(Modifier.height(8.dp))
-                Text(game.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-                Spacer(Modifier.height(8.dp))
-                Text(game.blurb, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-                Spacer(Modifier.height(32.dp))
-                Button(onClick = { started = true }, modifier = Modifier.fillMaxWidth().height(56.dp)) { Text("Start") }
+    CompositionLocalProvider(LocalAccent provides MfColors.accent(game.category)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .safeDrawingPadding()
+                .padding(horizontal = 20.dp),
+        ) {
+            PlayHeader(game.name, level, onExit)
+            if (started) {
+                SessionRunner(game, level, reduceMotion, haptics, onFinished)
+            } else {
+                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) {
+                    GameIntro(game, level, bestScore, onStart = { started = true })
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun PlayHeader(name: String, level: Int, onExit: () -> Unit) {
+    Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier.size(48.dp).clip(CircleShape).background(MfColors.Surface)
+                .mfClickable(CircleShape, "Leave game", onClick = onExit)
+                .semantics { contentDescription = "Leave game" },
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
+        Spacer(Modifier.width(12.dp))
+        Text(name, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1)
+        Text(
+            "Level $level", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MfColors.Primary,
+            modifier = Modifier.clip(CircleShape).background(MfColors.PrimaryLight).padding(horizontal = 14.dp, vertical = 6.dp),
+        )
     }
 }
 
@@ -139,34 +146,48 @@ private fun SessionRunner(
         }
     }
 
-    val onResult: (Boolean, Long) -> Unit = { correct, ms ->
-        if (feedback == null) {
-            session.submit(round, correct, ms)
-            feedback = correct
-            if (haptics && !correct) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-        }
-    }
+    val accent = LocalAccent.current
+    val shownRound = minOf(roundKey + 1, session.totalRounds)
 
     Column(Modifier.fillMaxSize()) {
-        LinearProgressIndicator(
-            progress = { session.index.toFloat() / session.totalRounds },
-            modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Round ${session.index + 1} of ${session.totalRounds}" },
-        )
-        Spacer(Modifier.height(12.dp))
-        Box(Modifier.height(32.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            when (feedback) {
-                true -> Text("✓ Correct", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.SemiBold)
-                false -> Text("✗ Not quite", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
-                null -> Unit
-            }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Round $shownRound of ${session.totalRounds}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.semantics { contentDescription = "Round $shownRound of ${session.totalRounds}" },
+            )
         }
-        key(roundKey) {
-            when (val r = round) {
-                is ChoiceRound -> ChoiceView(r, feedback != null, reduceMotion, onResult)
-                is NumberRound -> NumberView(r, feedback != null, reduceMotion, onResult)
-                is GridRound -> GridView(r, feedback != null, reduceMotion, onResult)
-                is SequenceRound -> SequenceView(r, feedback != null, reduceMotion, onResult)
-                is GlyphGridRound -> GlyphGridView(r, feedback != null, reduceMotion, onResult)
+        Spacer(Modifier.height(8.dp))
+        SoftBar(session.index.toFloat() / session.totalRounds, accent, Modifier.fillMaxWidth(), height = 6.dp)
+        Spacer(Modifier.height(4.dp))
+        FeedbackPill(feedback)
+
+        AnimatedContent(
+            targetState = RoundState(roundKey, round),
+            transitionSpec = {
+                fadeIn(tween(if (reduceMotion) MfMotion.Short else MfMotion.Medium, delayMillis = 60)) togetherWith
+                    fadeOut(tween(MfMotion.Short))
+            },
+            label = "round",
+        ) { state ->
+            // A round that is fading out is frozen, and its answers are ignored.
+            val live = state.key == roundKey
+            val paused = feedback != null || !live
+            val onResult: (Boolean, Long) -> Unit = { correct, ms ->
+                if (live && feedback == null) {
+                    session.submit(state.round, correct, ms)
+                    feedback = correct
+                    if (haptics && !correct) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                }
+            }
+            Column(Modifier.fillMaxSize()) {
+                when (val r = state.round) {
+                    is ChoiceRound -> ChoiceView(r, paused, reduceMotion, onResult)
+                    is NumberRound -> NumberView(r, paused, reduceMotion, onResult)
+                    is GridRound -> GridView(r, paused, reduceMotion, onResult)
+                    is SequenceRound -> SequenceView(r, paused, reduceMotion, onResult)
+                    is GlyphGridRound -> GlyphGridView(r, paused, reduceMotion, onResult)
+                }
             }
         }
     }
@@ -220,14 +241,13 @@ private fun Countdown(limitMs: Long, paused: Boolean, reduceMotion: Boolean, onE
     if (reduceMotion) {
         val seconds = ceil(remaining * limitMs / 1000f).toInt()
         Text(
-            "$seconds s", style = MaterialTheme.typography.labelLarge,
+            "$seconds s", fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
         )
     } else {
-        LinearProgressIndicator(
-            progress = { remaining },
-            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).semantics { contentDescription = "Time left" },
-            color = if (remaining < 0.25f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary,
+        SoftBar(
+            remaining, if (remaining < 0.25f) MfColors.Danger else LocalAccent.current,
+            Modifier.fillMaxWidth().semantics { contentDescription = "Time left" }, height = 6.dp, animate = false,
         )
     }
 }
@@ -235,7 +255,8 @@ private fun Countdown(limitMs: Long, paused: Boolean, reduceMotion: Boolean, onE
 @Composable
 private fun Prompt(text: String) {
     Text(
-        text, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center,
+        text, fontSize = 19.sp, lineHeight = 26.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
+        color = MaterialTheme.colorScheme.onBackground,
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
     )
 }
@@ -247,14 +268,16 @@ private fun Stimulus(text: String) {
     val size = when {
         lines.size == 1 && longest <= 3 -> 72.sp
         lines.size == 1 && longest <= 9 -> 44.sp
-        longest <= 16 && lines.size <= 5 -> 28.sp
-        else -> 20.sp
+        longest <= 16 && lines.size <= 5 -> 30.sp
+        else -> 22.sp
     }
-    Text(
-        text, fontSize = size, lineHeight = size * 1.35f, textAlign = TextAlign.Center,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-    )
+    QuestionSurface(Modifier.padding(vertical = 8.dp)) {
+        Text(
+            text, fontSize = size, lineHeight = size * 1.3f, textAlign = TextAlign.Center,
+            fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        )
+    }
 }
 
 @Composable
@@ -273,20 +296,16 @@ private fun ChoiceView(r: ChoiceRound, paused: Boolean, reduceMotion: Boolean, o
             Spacer(Modifier.height(8.dp))
             r.options.forEachIndexed { i, option ->
                 val isCorrect = i == r.correctIndex
-                val mark = when {
-                    paused && isCorrect -> "✓ "
-                    paused && i == picked -> "✗ "
-                    else -> ""
+                val state = when {
+                    paused && isCorrect -> OptionState.Correct
+                    paused && i == picked -> OptionState.Wrong
+                    paused -> OptionState.Dim
+                    else -> OptionState.Idle
                 }
-                OutlinedButton(
-                    onClick = {
-                        if (!paused) {
-                            picked = i
-                            submit(isCorrect)
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = 4.dp),
-                ) { Text(mark + option, fontSize = 18.sp, textAlign = TextAlign.Center) }
+                AnswerOption(option, state, enabled = !paused) {
+                    picked = i
+                    submit(isCorrect)
+                }
             }
         }
     }
@@ -303,28 +322,31 @@ private fun NumberView(r: NumberRound, paused: Boolean, reduceMotion: Boolean, o
         },
     ) { submit ->
         Prompt(r.prompt)
-        Text(
-            entry.ifEmpty { " " }, fontSize = 36.sp, textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-        )
-        if (paused) {
-            Text("Answer: ${r.answer}", textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        QuestionSurface(Modifier.padding(vertical = 4.dp)) {
+            Text(
+                entry.ifEmpty { "–" }, fontSize = 40.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                color = if (entry.isEmpty()) MfColors.TextMuted else MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+            )
         }
+        if (paused) {
+            Text(
+                "Answer: ${r.answer}", textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold,
+                color = MfColors.Success, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            )
+        }
+        Spacer(Modifier.height(6.dp))
         val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK")
         keys.chunked(3).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { k ->
-                    OutlinedButton(
-                        onClick = {
-                            if (paused) return@OutlinedButton
-                            when (k) {
-                                "⌫" -> entry = entry.dropLast(1)
-                                "OK" -> if (entry.isNotEmpty()) submit(entry == r.answer)
-                                else -> if (entry.length < r.answer.length) entry += k
-                            }
-                        },
-                        modifier = Modifier.weight(1f).height(60.dp).padding(vertical = 4.dp),
-                    ) { Text(k, fontSize = 20.sp) }
+                    KeyButton(k, enabled = !paused, primary = k == "OK", modifier = Modifier.weight(1f)) {
+                        when (k) {
+                            "⌫" -> entry = entry.dropLast(1)
+                            "OK" -> if (entry.isNotEmpty()) submit(entry == r.answer)
+                            else -> if (entry.length < r.answer.length) entry += k
+                        }
+                    }
                 }
             }
         }
@@ -332,52 +354,33 @@ private fun NumberView(r: NumberRound, paused: Boolean, reduceMotion: Boolean, o
 }
 
 @Composable
-private fun Cell(
-    text: String,
-    background: androidx.compose.ui.graphics.Color,
-    description: String,
-    modifier: Modifier,
-    fontSize: Int = 22,
-    onClick: (() -> Unit)? = null,
-) {
-    val shape = RoundedCornerShape(8.dp)
-    Box(
-        modifier
-            .aspectRatio(1f)
-            .clip(shape)
-            .background(background)
-            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .semantics { contentDescription = description },
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text, fontSize = fontSize.sp, color = MaterialTheme.colorScheme.onSurface)
-    }
-}
-
-@Composable
 private fun GridView(r: GridRound, paused: Boolean, reduceMotion: Boolean, onResult: (Boolean, Long) -> Unit) {
     val found = remember { mutableStateOf(setOf<Int>()) }
     var wrong by remember { mutableIntStateOf(-1) }
+    val accent = LocalAccent.current
 
     @Composable
     fun Board(revealTargets: Boolean, onTap: ((Int) -> Unit)?) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             for (row in 0 until r.size) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (col in 0 until r.size) {
                         val i = row * r.size + col
                         val marked = i in found.value || (revealTargets && i in r.targets)
-                        val bg = when {
-                            i == wrong -> MaterialTheme.colorScheme.errorContainer
-                            marked -> MaterialTheme.colorScheme.primaryContainer
-                            else -> MaterialTheme.colorScheme.surfaceContainer
-                        }
-                        Cell(
+                        PlayCell(
                             text = if (i == wrong) "✗" else if (marked) "●" else "",
-                            background = bg,
+                            background = when {
+                                i == wrong -> MfColors.DangerSoft
+                                marked -> accentSoft(accent)
+                                else -> MfColors.Surface
+                            },
                             description = "Row ${row + 1}, column ${col + 1}" + if (marked) ", marked" else "",
                             modifier = Modifier.weight(1f),
+                            borderColor = when {
+                                i == wrong -> MfColors.Danger
+                                marked -> accent
+                                else -> MfColors.TextMuted.copy(alpha = 0.35f)
+                            },
                             onClick = onTap?.let { tap -> { tap(i) } },
                         )
                     }
@@ -413,19 +416,21 @@ private fun SequenceView(r: SequenceRound, paused: Boolean, reduceMotion: Boolea
     var lit by remember { mutableIntStateOf(-1) }
     var entered by remember { mutableIntStateOf(0) }
     val columns = if (r.pads <= 4) 2 else 3
+    val accent = LocalAccent.current
 
     @Composable
     fun Pads(onTap: ((Int) -> Unit)?) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             (0 until r.pads).chunked(columns).forEach { rowPads ->
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     rowPads.forEach { pad ->
-                        Cell(
+                        PlayCell(
                             text = SHAPES[pad],
-                            background = if (pad == lit) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                            background = if (pad == lit) accent else MfColors.Surface,
                             description = "Pad ${pad + 1}",
                             modifier = Modifier.weight(1f),
-                            fontSize = if (pad == lit) 48 else 30,
+                            fontSize = if (pad == lit) 44 else 30,
+                            borderColor = if (pad == lit) accentDeep(accent) else MfColors.TextMuted.copy(alpha = 0.35f),
                             onClick = onTap?.let { tap -> { tap(pad) } },
                         )
                     }
@@ -467,19 +472,23 @@ private fun SequenceView(r: SequenceRound, paused: Boolean, reduceMotion: Boolea
 
 @Composable
 private fun GlyphGridView(r: GlyphGridRound, paused: Boolean, reduceMotion: Boolean, onResult: (Boolean, Long) -> Unit) {
+    var picked by remember { mutableIntStateOf(-1) }
     Phased(r.timeLimitMs, 0, paused, reduceMotion, onResult, show = {}) { submit ->
         Prompt(r.prompt)
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             r.glyphs.chunked(r.columns).forEachIndexed { rowIndex, row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     row.forEachIndexed { colIndex, glyph ->
                         val i = rowIndex * r.columns + colIndex
-                        Cell(
+                        val reveal = paused && i == r.oddIndex
+                        val missed = paused && i == picked && i != r.oddIndex
+                        PlayCell(
                             text = glyph,
-                            background = if (paused && i == r.oddIndex) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                            background = if (reveal) MfColors.SuccessSoft else if (missed) MfColors.DangerSoft else MfColors.Surface,
                             description = "$glyph, row ${rowIndex + 1}, column ${colIndex + 1}",
                             modifier = Modifier.weight(1f),
-                            onClick = { if (!paused) submit(i == r.oddIndex) },
+                            borderColor = if (reveal) MfColors.Success else if (missed) MfColors.Danger else MfColors.TextMuted.copy(alpha = 0.35f),
+                            onClick = { if (!paused) { picked = i; submit(i == r.oddIndex) } },
                         )
                     }
                 }
