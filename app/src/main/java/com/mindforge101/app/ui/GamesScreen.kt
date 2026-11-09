@@ -61,7 +61,7 @@ import com.mindforge101.app.games.Catalog
 internal fun PageHeader(title: String, subtitle: String, art: String, trailing: @Composable (() -> Unit)? = null) {
     Row(verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f)) {
-            Text("MindForge 101", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Blue)
+            Text("MindForge", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Blue)
             Spacer(Modifier.height(8.dp))
             Text(title, fontSize = 32.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold)
             Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

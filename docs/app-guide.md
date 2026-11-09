@@ -1,4 +1,4 @@
-# MindForge 101 — App Guide
+# MindForge — App Guide
 
 Offline brain-training app for Android. 62 short games in 10 categories, free, no ads, no purchases, no account, no internet permission. Progress is stored only on the device.
 

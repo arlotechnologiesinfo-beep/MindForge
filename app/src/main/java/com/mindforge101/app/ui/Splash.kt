@@ -2,6 +2,11 @@ package com.mindforge101.app.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.mindforge101.app.R
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -54,23 +59,15 @@ fun SplashOverlay(reduceMotion: Boolean, onDone: () -> Unit) {
     }
 
     Box(
-        Modifier.fillMaxSize().alpha(overlay.value).background(MfColors.Background),
+        Modifier.fillMaxSize().alpha(overlay.value).background(Color(0xFF000A12)),
         contentAlignment = Alignment.Center,
     ) {
-        Column(
-            Modifier.alpha(alpha.value).scale(scale.value),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Box(Modifier.size(200.dp), contentAlignment = Alignment.Center) {
-                if (!reduceMotion) MfLottie(com.mindforge101.app.R.raw.ring_pulse, Modifier.size(200.dp))
-                BrandMark(Modifier.size(96.dp))
-            }
-            Spacer(Modifier.height(20.dp))
-            Text("MindForge 101", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = MfColors.TextPrimary)
-            Spacer(Modifier.height(4.dp))
-            Text("Brain Training for a Sharper You", fontSize = 14.sp, color = MfColors.TextSecondary)
-        }
+        Image(
+            painter = painterResource(R.drawable.mf_logo),
+            contentDescription = "MindForge",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxWidth().alpha(alpha.value).scale(scale.value),
+        )
     }
 }
 

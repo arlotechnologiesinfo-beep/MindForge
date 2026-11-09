@@ -19,7 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
@@ -117,7 +117,7 @@ fun HomeScreen(
 private fun Header(name: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text("MindForge 101", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Blue)
+            Text("MindForge", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Blue)
             Spacer(Modifier.height(8.dp))
             Text(
                 "Hello, $name", fontSize = 32.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold,
@@ -213,7 +213,7 @@ private fun StartButton(next: GameDef, allDone: Boolean, onClick: () -> Unit) {
             color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
         )
         Spacer(Modifier.width(8.dp))
-        Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.White)
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.White)
     }
 }
 
